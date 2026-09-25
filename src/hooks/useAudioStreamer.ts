@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useRef, useCallback } from "react";
+import { useState, useRef, useCallback, useEffect } from "react";
 
 interface SubtitleResult {
   originalText: string;
@@ -23,125 +23,244 @@ export function useAudioStreamer({
   const [isRecording, setIsRecording] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [interimText, setInterimText] = useState<string>("");
 
-  const mediaRecorderRef = useRef<MediaRecorder | null>(null);
-  const streamRef = useRef<MediaStream | null>(null);
+  const recognitionRef = useRef<any>(null);
   const isRecordingRef = useRef(false);
+  const targetLangRef = useRef(targetLang);
+  const roomRef = useRef(room);
+  const onNewSubtitleRef = useRef(onNewSubtitle);
 
-  // Enviar chunk de audio al endpoint de Gemini
-  const processAudioChunk = async (audioBlob: Blob) => {
-    // Si el chunk es insignificante (silencio muy corto), lo saltamos
-    if (audioBlob.size < 2000) return;
+  useEffect(() => {
+    targetLangRef.current = targetLang;
+  }, [targetLang]);
+
+  useEffect(() => {
+    roomRef.current = room;
+  }, [room]);
+
+  useEffect(() => {
+    onNewSubtitleRef.current = onNewSubtitle;
+  }, [onNewSubtitle]);
+
+  const translateText = async (text: string) => {
+    const cleanText = text.trim();
+    if (!cleanText || cleanText.length < 2) return;
 
     try {
       setIsLoading(true);
+      const res = await fetch("/api/transcribe", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          text: cleanText,
+          targetLang: targetLangRef.current,
+          room: roomRef.current,
+        }),
+      });
+
+      const json = await res.json();
+      if (json.success && json.data && json.data.translatedText) {
+        onNewSubtitleRef.current({
+          originalText: json.data.originalText || cleanText,
+          translatedText: json.data.translatedText,
+          detectedLanguage:
+            json.data.detectedLanguage ||
+            (targetLangRef.current === "es" ? "en" : "es"),
+          timestamp: Date.now(),
+        });
+        // Recién cuando se agregó a la lista de abajo, limpiamos el banner en vivo
+        setInterimText("");
+      }
+    } catch (err: any) {
+      console.warn("Error en traducción:", err);
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  // En useAudioStreamer.ts
+
+  // Agregá esta ref arriba con las otras refs:
+  const speechBufferRef = useRef<string>("");
+  const flushTimerRef = useRef<any>(null);
+
+  // Y reemplazá initRecognition por esto:
+  const initRecognition = useCallback(() => {
+    const SpeechRecognition =
+      (window as any).SpeechRecognition ||
+      (window as any).webkitSpeechRecognition;
+
+    if (!SpeechRecognition) {
+      setError("Usa Google Chrome para habilitar la captura de micrófono.");
+      return null;
+    }
+
+    const recognition = new SpeechRecognition();
+    recognition.continuous = true;
+    recognition.interimResults = true;
+    recognition.lang = targetLangRef.current === "es" ? "en-US" : "es-AR";
+
+    // Función interna para despachar el buffer acumulado
+    const flushBuffer = () => {
+      if (flushTimerRef.current) clearTimeout(flushTimerRef.current);
+      const textToTranslate = speechBufferRef.current.trim();
+      if (textToTranslate.length >= 3) {
+        setInterimText(textToTranslate + " ⌛");
+        translateText(textToTranslate);
+        speechBufferRef.current = ""; // Vaciamos para la próxima frase
+      }
+    };
+
+    recognition.onresult = (event: any) => {
+      let interim = "";
+
+      for (let i = event.resultIndex; i < event.results.length; ++i) {
+        const chunk = event.results[i][0].transcript;
+
+        if (event.results[i].isFinal) {
+          // Acumulamos las palabras en el buffer
+          speechBufferRef.current += " " + chunk;
+          speechBufferRef.current = speechBufferRef.current.trim();
+
+          const words = speechBufferRef.current.split(/\s+/).filter(Boolean);
+
+          // Si ya juntamos 6 o más palabras, mandamos la oración completa
+          if (words.length >= 6) {
+            flushBuffer();
+          } else {
+            // Si son pocas palabras, esperamos 1 segundo a ver si seguís hablando
+            if (flushTimerRef.current) clearTimeout(flushTimerRef.current);
+            flushTimerRef.current = setTimeout(flushBuffer, 1000);
+          }
+        } else {
+          interim += chunk;
+        }
+      }
+
+      // Mostramos en vivo lo que está en el buffer + lo que estás diciendo en el momento
+      const liveView = (speechBufferRef.current + " " + interim).trim();
+      if (liveView) {
+        setInterimText(liveView);
+      }
+    };
+
+    recognition.onerror = (event: any) => {
+      if (event.error !== "no-speech") {
+        console.warn("Aviso micrófono:", event.error);
+      }
+    };
+
+    recognition.onend = () => {
+      // Si se cortó el mic, antes de reiniciar mandamos lo que haya quedado en el tintero
+      flushBuffer();
+
+      if (isRecordingRef.current) {
+        try {
+          recognition.start();
+        } catch (e) {
+          setTimeout(() => {
+            if (isRecordingRef.current) {
+              const freshRec = initRecognition();
+              if (freshRec) {
+                recognitionRef.current = freshRec;
+                freshRec.start();
+              }
+            }
+          }, 150);
+        }
+      } else {
+        setIsRecording(false);
+      }
+    };
+
+    return recognition;
+  }, []);
+
+  const startRecording = useCallback(() => {
+    setError(null);
+    setInterimText("");
+    isRecordingRef.current = true;
+    setIsRecording(true);
+
+    if (recognitionRef.current) {
+      try {
+        recognitionRef.current.stop();
+      } catch (e) {}
+    }
+
+    const rec = initRecognition();
+    if (rec) {
+      recognitionRef.current = rec;
+      try {
+        rec.start();
+      } catch (err: any) {
+        console.error("Error al iniciar mic:", err);
+      }
+    }
+  }, [initRecognition]);
+
+  const stopRecording = useCallback(() => {
+    isRecordingRef.current = false;
+    setIsRecording(false);
+    setInterimText("");
+
+    if (recognitionRef.current) {
+      try {
+        recognitionRef.current.stop();
+      } catch (e) {}
+      recognitionRef.current = null;
+    }
+  }, []);
+
+  const processAudioFile = async (file: File) => {
+    try {
+      setIsLoading(true);
+      setError(null);
       const formData = new FormData();
-      formData.append("audio", audioBlob, "chunk.webm");
-      formData.append("room", room);
-      formData.append("targetLang", targetLang);
+      formData.append("audio", file);
+      formData.append("room", roomRef.current);
+      formData.append("targetLang", targetLangRef.current);
 
       const res = await fetch("/api/transcribe", {
         method: "POST",
         body: formData,
       });
 
-      if (!res.ok) {
-        throw new Error(`Error en servidor: ${res.statusText}`);
-      }
-
-      const responseData = await res.json();
-      if (responseData.success && responseData.data) {
-        const { originalText, translatedText, detectedLanguage } =
-          responseData.data;
-
-        // Solo emitir si hay texto real (Gemini omite ruido de fondo)
-        if (originalText?.trim() || translatedText?.trim()) {
-          onNewSubtitle({
-            originalText: originalText || "",
-            translatedText: translatedText || "",
-            detectedLanguage: detectedLanguage || "en",
-            timestamp: responseData.timestamp || Date.now(),
-          });
-        }
+      const json = await res.json();
+      if (json.success && json.data) {
+        onNewSubtitleRef.current({
+          originalText: json.data.originalText || file.name,
+          translatedText: json.data.translatedText || "Traducción completada",
+          detectedLanguage: json.data.detectedLanguage || "en",
+          timestamp: Date.now(),
+        });
+      } else {
+        setError(json.error || "No se pudo procesar el archivo.");
       }
     } catch (err: any) {
-      console.error("Error al procesar chunk de audio:", err);
-      setError(err?.message || "Error al conectar con el servicio de voz");
+      setError("Error al procesar archivo: " + err.message);
     } finally {
       setIsLoading(false);
     }
   };
 
-  // Iniciar captura
-  const startRecording = useCallback(async () => {
-    setError(null);
-    try {
-      const stream = await navigator.mediaDevices.getUserMedia({
-        audio: {
-          echoCancellation: true,
-          noiseSuppression: true,
-          sampleRate: 16000,
-        },
-      });
-
-      streamRef.current = stream;
-      const mediaRecorder = new MediaRecorder(stream, {
-        mimeType: MediaRecorder.isTypeSupported("audio/webm;codecs=opus")
-          ? "audio/webm;codecs=opus"
-          : "audio/webm",
-      });
-
-      mediaRecorderRef.current = mediaRecorder;
-      isRecordingRef.current = true;
-      setIsRecording(true);
-
-      // Chunks dinámicos cada 3 segundos para balancear contexto y latencia
-      mediaRecorder.ondataavailable = (event) => {
-        if (event.data.size > 0 && isRecordingRef.current) {
-          processAudioChunk(event.data);
-        }
-      };
-
-      mediaRecorder.start(3000);
-    } catch (err: any) {
-      console.error("Error al acceder al micrófono:", err);
-      setError("No se pudo acceder al micrófono. Verificá los permisos.");
-      setIsRecording(false);
-    }
-  }, [room, targetLang]);
-
-  // Detener captura
-  const stopRecording = useCallback(() => {
-    isRecordingRef.current = false;
-    setIsRecording(false);
-
-    if (
-      mediaRecorderRef.current &&
-      mediaRecorderRef.current.state !== "inactive"
-    ) {
-      mediaRecorderRef.current.stop();
-    }
-
-    if (streamRef.current) {
-      streamRef.current.getTracks().forEach((track) => track.stop());
-    }
+  useEffect(() => {
+    return () => {
+      isRecordingRef.current = false;
+      if (recognitionRef.current) {
+        try {
+          recognitionRef.current.stop();
+        } catch (e) {}
+      }
+    };
   }, []);
-
-  // Simulación: Inyectar un archivo de audio/charla grabada (clave para el jurado y la demo)
-  const processAudioFile = async (file: File) => {
-    setError(null);
-    setIsLoading(true);
-    try {
-      await processAudioChunk(file);
-    } finally {
-      setIsLoading(false);
-    }
-  };
 
   return {
     isRecording,
     isLoading,
     error,
+    interimText,
     startRecording,
     stopRecording,
     processAudioFile,
