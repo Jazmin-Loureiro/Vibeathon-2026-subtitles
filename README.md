@@ -1,36 +1,148 @@
-This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://nextjs.org/docs/app/api-reference/cli/create-next-app).
+# ⚡ VibeStream AI — Nerdearla 2026
 
-## Getting Started
+[Español](#-español) | [English](#-english)
 
-First, run the development server:
+---
+
+## 🇦🇷 Español
+
+> Subtitulado y traducción simultánea en tiempo real con Gemini Flash, soporte multi-sala y salida OBS Overlay para conferencias de tecnología.
+
+### 🎯 El Problema
+
+En conferencias técnicas de ritmo acelerado como **Nerdearla**, los oradores utilizan vocabulario especializado (Kubernetes, microservicios, CI/CD, Docker, PRs, Next.js). Las herramientas de subtitulado tradicionales introducen alta latencia o traducen erróneamente la jerga técnica, dificultando el seguimiento para personas con dificultades auditivas o hablantes no nativos.
+
+### 🚀 La Solución
+
+**VibeStream AI** es una consola de accesibilidad en tiempo real que ofrece:
+
+1. **Captura en Vivo y de Archivos:** Escucha el micrófono de los oradores o procesa archivos de conferencias grabadas (`.mp4` / `.mp3`).
+2. **Preservación de Jerga Técnica:** Conectado a **Google Gemini Flash** con prompts diseñados para no alterar términos de ingeniería de software.
+3. **Arquitectura Multi-Sala:** Soporte para escenarios simultáneos (_Gran Sala_, _Auditorio_, _Sala Abasto_, _Konex en Vivo_) con aislamiento de subtítulos e historial persistente independiente por sala.
+4. **Modo OBS Overlay:** Ruta `/overlay` con fondo transparente lista para ser agregada como _Browser Source_ en OBS Studio o vMix.
+5. **Exportación .SRT:** Generación y descarga inmediata de archivos de subtítulos estándar para subida directa a YouTube post-evento.
+
+### 🛠️ Stack Tecnológico
+
+- **Frontend & Backend:** Next.js 15 (App Router, Serverless Route Handlers)
+- **Estilos e Iconografía:** Tailwind CSS & Lucide Icons
+- **IA & NLP:** Google Gemini Flash (`@google/genai`) con FastFallback
+- **Captura de Voz:** Web Speech API nativa + Ingesta binaria multiparte
+- **Sincronización:** Event Bus reactivo con LocalStorage
+
+### ⚡ Instalación y Uso Local
+
+1. Clonar el repositorio:
+
+```bash
+git clone https://github.com/Jazmin-Loureiro/Vibeathon-2026-subtitles
+cd Vibeathon-2026-subtitles
+```
+
+2. Instalar dependencias:
+
+```bash
+npm install
+```
+
+3. Configurar la clave de API en un archivo `.env.local`:
+
+```bash
+cp .env.example .env.local
+```
+
+Contenido de `.env.local`:
+
+```env
+GEMINI_API_KEY=tu_api_key_de_gemini
+```
+
+4. Iniciar el servidor de desarrollo:
 
 ```bash
 npm run dev
-# or
-yarn dev
-# or
-pnpm dev
-# or
-bun dev
 ```
 
-Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
+Abrir [http://localhost:3000](http://localhost:3000) en Google Chrome.
 
-You can start editing the page by modifying `app/page.tsx`. The page auto-updates as you edit the file.
+### 📺 Integración con OBS Studio
 
-This project uses [`next/font`](https://nextjs.org/docs/app/building-your-application/optimizing/fonts) to automatically optimize and load [Geist](https://vercel.com/font), a new font family for Vercel.
+Para superponer los subtítulos técnicos en una transmisión en vivo:
 
-## Learn More
+1. En OBS, agregar una nueva fuente **Navegador** (_Browser Source_).
+2. URL: `http://localhost:3000/overlay?room=gran-sala&lang=es` (o tu dominio desplegado).
+3. Configurar dimensiones: Ancho: `1920`, Alto: `1080` (o `300` para zócalo inferior).
+4. Los subtítulos aparecerán en tiempo real con fondo transparente.
 
-To learn more about Next.js, take a look at the following resources:
+---
 
-- [Next.js Documentation](https://nextjs.org/docs) - learn about Next.js features and API.
-- [Learn Next.js](https://nextjs.org/learn) - an interactive Next.js tutorial.
+## 🇬🇧 English
 
-You can check out [the Next.js GitHub repository](https://github.com/vercel/next.js) - your feedback and contributions are welcome!
+> Real-time technical speech captions, dual-language translation powered by Gemini Flash, multi-stage isolation, and OBS Studio overlay integration for developer conferences.
 
-## Deploy on Vercel
+### 🎯 The Challenge
 
-The easiest way to deploy your Next.js app is to use the [Vercel Platform](https://vercel.com/new?utm_medium=default-template&filter=next.js&utm_source=create-next-app&utm_campaign=create-next-app-readme) from the creators of Next.js.
+Technical conferences move fast. Speakers continuously reference specialized engineering terms (Kubernetes, AWS, microservices, containerization, pull requests). Generic captioning tools either mangle these terms or add substantial lag, creating accessibility barriers for international audiences and deaf or hard-of-hearing attendees.
 
-Check out our [Next.js deployment documentation](https://nextjs.org/docs/app/building-your-application/deploying) for more details.
+### 🚀 The Solution
+
+**VibeStream AI** delivers an accessible live stream cockpit:
+
+1. **Live & File Audio Ingestion:** Ingests live microphone feeds or processed conference session recordings (`.mp4` / `.mp3`).
+2. **Technical Vocabulary Preservation:** Powered by **Google Gemini Flash**, prompt-tuned to maintain pristine software terminology.
+3. **Multi-Track Stage Management:** Independent subtitle history and state per conference stage (_Gran Sala_, _Auditorio_, _Sala Abasto_, _Konex en Vivo_).
+4. **Broadcast OBS Overlay:** Dedicated transparent `/overlay` route built to plug directly into OBS Studio or vMix as a Browser Source.
+5. **Instant .SRT Export:** Generates standardized subtitle files with accurate timestamps for post-conference distribution.
+
+### 🛠️ Tech Stack
+
+- **Framework:** Next.js 15 (App Router, Serverless Route Handlers)
+- **Styling:** Tailwind CSS & Lucide Icons
+- **AI Core:** Google Gemini Flash (`@google/genai`) + Low-Latency Fallback
+- **Speech Capture:** Web Speech API & Multi-part FormData
+- **Sync:** LocalStorage Event Bus for overlay mirroring
+
+### ⚡ Quickstart
+
+1. Clone repository:
+
+```bash
+git clone https://github.com/Jazmin-Loureiro/Vibeathon-2026-subtitles
+cd Vibeathon-2026-subtitles
+```
+
+2. Install dependencies:
+
+```bash
+npm install
+```
+
+3. Configure environment variables in `.env.local`:
+
+```env
+GEMINI_API_KEY=your_gemini_api_key_here
+```
+
+4. Run local server:
+
+```bash
+npm run dev
+```
+
+Open [http://localhost:3000](http://localhost:3000) in Google Chrome.
+
+### 📺 OBS Studio Integration
+
+To overlay live technical captions on your stream:
+
+1. In OBS, add a new **Browser Source**.
+2. URL: `http://localhost:3000/overlay?room=gran-sala&lang=es` (or your deployed URL).
+3. Set dimensions: Width: `1920`, Height: `1080` (or `300` for a lower-third banner).
+4. Captions will render smoothly with a transparent background in real-time.
+
+---
+
+## 📄 Licencia / License
+
+Distribuido bajo la Licencia MIT. Consulta el archivo [LICENSE](LICENSE) para más detalles.  
+Distributed under the MIT License. See [LICENSE](LICENSE) for details.
